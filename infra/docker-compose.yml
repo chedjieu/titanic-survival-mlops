@@ -1,0 +1,181 @@
+name: titanic-survival-mlops
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.9.3-python3.11
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: "dGVzdC1mZXJuZXQta2V5LTMyYnl0ZXMtbG9uZyEh"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW_UID: "50000"
+    TITANIC_PROJECT_ROOT: /opt/titanic-survival-mlops
+    PYTHONPATH: /opt/titanic-survival-mlops/src
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+    KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    DATA_PATH: /opt/titanic-survival-mlops/data/raw/titanic_data.csv
+    MIN_F1_SCORE: "0.70"
+  volumes:
+    - ../pipelines/airflow/dags:/opt/airflow/dags
+    - ../:/opt/titanic-survival-mlops
+    - ../models:/opt/titanic-survival-mlops/models
+  user: "50000:0"
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.14.3
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow-data:/mlflow
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      retries: 10
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic passenger.events --partitions 3 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic survival.predictions --partitions 3 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic survival.dlq --partitions 3 --replication-factor 1
+        echo topics-ready
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        pip install --quiet --no-cache-dir scikit-learn pandas numpy mlflow joblib pandera pydantic confluent-kafka prometheus-client bentoml httpx pyyaml
+        airflow db migrate
+        airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 20s
+      retries: 10
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  bento:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.bento
+    ports:
+      - "3000:3000"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_VERSION: Production
+      MODEL_NAME: titanic-survival-classifier
+    volumes:
+      - ../models:/opt/titanic-survival-mlops/models
+    depends_on:
+      - mlflow
+
+  kafka-consumer:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.app
+    command: python -m titanic_mlops.serving.kafka_runner
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_VERSION: Production
+      PYTHONPATH: /opt/titanic-survival-mlops/src
+    volumes:
+      - ../:/opt/titanic-survival-mlops
+      - ../models:/opt/titanic-survival-mlops/models
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      bento:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:
+  mlflow-data:
+  grafana-data:

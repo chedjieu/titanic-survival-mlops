@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+.cursor/
+.DS_Store
+*.swp
+
+# ML / artifacts
+mlruns/
+mlartifacts/
+mlflow.db
+models/*
+!models/.gitkeep
+*.pkl
+*.joblib
+.bentoml/
+bentos/
+
+# Airflow
+pipelines/airflow/logs/
+pipelines/airflow/airflow.db
+airflow.cfg
+
+# Data / secrets
+**/config.json
+!**/*.example.json
+secrets/
+*.pem
+
+# Test / coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+
+# Docker volumes
+infra/data/
+infra/mlflow/artifacts/

@@ -1,0 +1,31 @@
+{
+  "annotations": { "list": [] },
+  "title": "Titanic Survival Serving",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Predictions total",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(titanic_predictions_total[5m])) by (survived)",
+          "legendFormat": "survived={{survived}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Prediction latency",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(titanic_prediction_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    }
+  ]
+}

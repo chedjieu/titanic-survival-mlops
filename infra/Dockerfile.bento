@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+
+WORKDIR /opt/titanic-survival-mlops
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml README.md ./
+COPY src ./src
+COPY data ./data
+COPY models ./models
+
+RUN pip install --no-cache-dir -e . bentoml
+
+ENV PYTHONPATH=/opt/titanic-survival-mlops/src
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 3000
+
+CMD ["bentoml", "serve", "titanic_mlops.serving.service:SurvivalService", "--host", "0.0.0.0", "--port", "3000"]

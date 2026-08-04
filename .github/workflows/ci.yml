@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check src tests pipelines
+
+      - name: Unit tests
+        env:
+          MLFLOW_TRACKING_URI: sqlite:///./mlflow.db
+        run: pytest -q --cov=titanic_mlops --cov-report=term-missing
+
+      - name: Train smoke (local mlflow sqlite store)
+        env:
+          MLFLOW_TRACKING_URI: sqlite:///./mlflow.db
+          MIN_F1_SCORE: "0.50"
+        run: python -m titanic_mlops.training.train --no-register
+
+      - name: Build app image
+        run: docker build -f infra/Dockerfile.app -t titanic-mlops-app:ci .
+
+      - name: Build bento image
+        run: docker build -f infra/Dockerfile.bento -t titanic-survival-service:ci .

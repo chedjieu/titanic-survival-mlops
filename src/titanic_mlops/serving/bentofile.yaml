@@ -1,0 +1,21 @@
+service: "service:SurvivalService"
+description: "Titanic survival prediction service"
+labels:
+  owner: mlops
+  project: titanic-survival-mlops
+include:
+  - "*.py"
+  - "../../features/*.py"
+  - "../../config.py"
+  - "../../__init__.py"
+python:
+  packages:
+    - scikit-learn>=1.4
+    - pandas>=2.1
+    - numpy>=1.26
+    - mlflow>=2.14
+    - joblib>=1.3
+    - prometheus-client>=0.20
+    - pydantic>=2.6
+docker:
+  python_version: "3.11"

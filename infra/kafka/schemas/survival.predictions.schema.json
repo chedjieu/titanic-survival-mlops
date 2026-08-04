@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SurvivalPrediction",
+  "type": "object",
+  "required": ["survived", "survival_probability", "model_version"],
+  "properties": {
+    "event_id": { "type": ["string", "null"] },
+    "idempotency_key": { "type": ["string", "null"] },
+    "passenger_id": { "type": ["string", "null"] },
+    "survived": { "type": "integer", "enum": [0, 1] },
+    "survival_probability": { "type": "number", "minimum": 0, "maximum": 1 },
+    "model_version": { "type": "string" }
+  },
+  "additionalProperties": true
+}

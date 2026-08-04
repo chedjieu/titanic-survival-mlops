@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: titanic-survival-service
+  labels:
+    app: titanic-survival-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: titanic-survival-service
+  template:
+    metadata:
+      labels:
+        app: titanic-survival-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: /metrics
+    spec:
+      containers:
+        - name: bento
+          image: titanic-survival-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          env:
+            - name: MLFLOW_TRACKING_URI
+              valueFrom:
+                secretKeyRef:
+                  name: titanic-mlops-secrets
+                  key: mlflow_tracking_uri
+            - name: MODEL_VERSION
+              value: Production
+            - name: MODEL_NAME
+              value: titanic-survival-classifier
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: titanic-survival-service
+spec:
+  selector:
+    app: titanic-survival-service
+  ports:
+    - port: 80
+      targetPort: 3000
+  type: ClusterIP

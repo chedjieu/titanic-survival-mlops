@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "titanic-survival-mlops"
+version = "0.1.0"
+description = "Enterprise MLOps reference platform for Titanic survival prediction"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Desire" }]
+dependencies = [
+  "numpy>=1.26",
+  "pandas>=2.1",
+  "scikit-learn>=1.4",
+  "joblib>=1.3",
+  "mlflow>=2.14",
+  "bentoml>=1.3",
+  "pydantic>=2.6",
+  "pandera>=0.18",
+  "confluent-kafka>=2.3",
+  "prometheus-client>=0.20",
+  "httpx>=0.27",
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "ruff>=0.5",
+]
+airflow = [
+  "apache-airflow>=2.9",
+]
+
+[project.scripts]
+titanic-train = "titanic_mlops.training.train:main"
+titanic-produce = "titanic_mlops.serving.kafka_producer:main"
+titanic-consume = "titanic_mlops.serving.kafka_runner:main"
+titanic-monitor = "titanic_mlops.monitoring.drift:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
